@@ -1,0 +1,82 @@
+from __future__ import print_function
+from sensor_msgs.msg import Image
+
+import cv2
+import rospy
+import numpy as np
+
+
+fgbg = cv2.createBackgroundSubtractorMOG2()
+i=0
+
+class lightDetection(object):
+    def __init__(self, image, x_min , x_max, y_min, y_max, det_class, det_id, var):
+        super(lightDetection, self).__init__()
+        self.i=0
+        self.obj_type = None
+
+    def recognize(self, cv_image, x_min, x_max, y_min, y_max, det_class, det_id, var):
+
+        roi_bgr=cv_image[y_min:y_max , x_min:x_max]
+        fgmask = fgbg.apply(roi_bgr)[1]
+
+        self.i=self.i+1
+
+        # Convert BGR to HSV
+        roi_hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
+
+        ##Object-Tracking
+        # define range of blue color in HSV
+        lower_blue_hsv = np.array([110,50,50])
+        upper_blue_hsv = np.array([130,255,255])
+        # define range of red color in HSV
+        lower_red_hsv = np.array([0,50,50])
+        upper_red_hsv = np.array([10,255,255])
+
+        # Threshold the HSV image to get only blue/red colors
+        mask_blue_hsv = cv2.inRange(roi_hsv, lower_blue_hsv, upper_blue_hsv)
+        mask_red_hsv = cv2.inRange(roi_hsv, lower_red_hsv, upper_red_hsv)
+
+        # preprocess images
+        thresh_mask_blue_hsv = cv2.threshold(mask_blue_hsv, 200, 255, cv2.THRESH_BINARY)[1]
+        thresh_mask_blue_hsv = cv2.erode(thresh_mask_blue_hsv, None, iterations=4)
+        thresh_mask_blue_hsv = cv2.dilate(thresh_mask_blue_hsv, None, iterations=8)
+
+        # Bitwise-AND mask 
+        result_blue_hsv = cv2.bitwise_and(roi_bgr,roi_bgr, mask= thresh_mask_blue_hsv)
+        result_red_hsv = cv2.bitwise_and(roi_bgr,roi_bgr, mask= mask_red_hsv)
+
+        # identify shape
+        # findContour: 
+            # first one is source image,
+            # second is contour retrieval mode, 
+            # third is contour approximation 
+        im2,contours_blue,hierarchy = cv2.findContours(thresh_mask_blue_hsv, 1, 2)
+        cv2.drawContours(result_blue_hsv, contours_blue, -1, (0,255,0), 3)
+        im2,contours_red,hierarchy = cv2.findContours(mask_red_hsv, 1, 2)
+        cv2.drawContours(result_red_hsv, contours_red, -1, (0,255,0), 3)
+
+        if len(contours_blue) > 1:
+            c_blue = contours_blue[0]
+            area_blue = cv2.contourArea(c_blue)
+        else: 
+            area_blue = 0
+
+        if len(contours_red) > 1:
+            c_red = contours_red[0]
+            area_red = cv2.contourArea(c_red)
+        else: 
+            area_red = 0
+
+        print (area_blue, area_red)
+
+        if area_blue>1000 or area_red>=10:
+            obj_type = "EMV"
+        else:
+            obj_type = det_class
+
+def main():
+    node = lightDetection()
+    
+if __name__ == '__main__':
+    main()
